@@ -1,0 +1,54 @@
+  (function execute(inputs, outputs) {
+// ... code ...
+  function getUndiscoveredIP(id){
+    var issueMap = {};
+    var schStatusGR = new GlideRecord("discovery_status");
+    schStatusGR.addEncodedQuery("dscheduler="+ id);
+    schStatusGR.orderBy("sys_created_on");
+    schStatusGR.setLimit(1);
+    schStatusGR.query();
+    if(schStatusGR.next()){
+    var disDeviceGR = new GlideQuery('discovery_device_history')
+    .where("status",schStatusGR.getValue("sys_id"))
+    .select("source","last_state")
+    .forEach(function(e){
+      	var assignment_grp =  "";
+        var state = e.last_state
+        if(!(state in issueMap) && !(state.match(/Created CI|Identified CI|Updated CI/)){
+           var common_issues = /Empty or IP not shown in Discovery Status|Active, couldn't classify , no WMI|Active, couldn't classify|Active, Windows Cluster VIP|Alive, not active, not classified|Classified, couldn't identify/
+           if(!(state.match(common_issues))) 
+        	state = "others";
+      		if(state == 'Empty or IP not shown in Discovery Status') assignment_group = 'Network';
+      		if(state.match(/Active|Identified, ignored extra IP|Classified/)) assignment_group = 'Inmorphis_ITOM';
+      		if(state == "Active, couldn't classify , no WMI") assignment_group = 'SYSWINDOWS';
+           issueMap[state]= {
+           	"ip": [],
+            "assignment_group": ""
+           };
+        }
+        var grpGR = new GlideRecord("sys_user_group");
+      	grpGR.addQuery("name",assignment_group);
+      	grpGR.query();
+      	if(grpGR.next()){
+        issueMap[state]["assignment_group"] = grpGR.getValue("sys_id")
+        }
+      	issueMap[state]["ip"].push(e.source)
+        })
+    }
+    return issueMap
+}
+
+  var p = inputs['scheduler_map'];
+  var found_issue = false
+	for (var loc in p) {
+    if (p.hasOwnProperty(loc)) {
+        p[loc]["issues"] = getUndiscoveredIP(p[loc]["scheduler"])
+      	if(p[loc]["issues"] != {}){
+        found_issue = true;
+    	}
+    }
+}
+
+  outputs['issues'] = p;
+  outputs['issue_found'] = found_issue;
+})(inputs, outputs);
